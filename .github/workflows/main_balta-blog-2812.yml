@@ -92,6 +92,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: .net-app
+          path: ./publish
       
       - name: Login to Azure
         uses: azure/login@v2
@@ -106,5 +107,5 @@ jobs:
         with:
           app-name: 'balta-blog-2812'
           slot-name: 'Production'
-          package: .
+          package: ./publish
           
