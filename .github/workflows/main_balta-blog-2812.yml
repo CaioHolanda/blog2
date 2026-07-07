@@ -44,6 +44,22 @@ jobs:
           name: .net-app
           path: ${{env.DOTNET_ROOT}}/myapp
 
+      - name: Get runner public IP
+        id: runner_ip
+        run: echo "ipv4=$(curl -s https://api.ipify.org)" >> $GITHUB_OUTPUT
+
+      - name: Allow runner IP in Azure SQL firewall
+        run: az sql server firewall-rule create --resource-group blog --server blog2812server --name github-runner --start-ip-address ${{ steps.runner_ip.outputs.ipv4 }} --end-ip-address ${{ steps.runner_ip.outputs.ipv4 }}
+
+      - name: Update database
+        env: 
+          ConnectionStrings__DefaultConnection: ${{ secrets.AZURE_SQL_CONNECTION_STRING }}
+        run: dotnet ef database update --configuration Release
+
+      - name: Remove runner IP from Azure SQL firewall
+        if: always()
+        run: az sql server firewall-rule delete --resource-group blog --server blog2812server --name github-runner
+
   deploy:
     runs-on: ubuntu-latest
     needs: build
