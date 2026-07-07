@@ -9,56 +9,72 @@ on:
       - main
   workflow_dispatch:
 
-env:
-  ConnectionStrings__DefaultConnection: ${{ secrets.AZURE_SQL_CONNECTION_STRING }}
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_A41617C6D8894B7A9188024955C1917F }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_0B027A37099D439F8C3115784B6B087C }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_E9B59AD64A3C4BC29D3FA69274B099B7 }}
 
       - name: Set up .NET Core
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '6.0.x'
-      
+
       - name: Install EF Tools
         run: dotnet tool install --global dotnet-ef --version 6.0.5
-       
+
       - name: Build with dotnet
         run: dotnet build --configuration Release
-
-      - name: Update database
-        run: dotnet ef database update --configuration Release
-
-      - name: dotnet publish
-        run: dotnet publish -c Release -o ${{env.DOTNET_ROOT}}/myapp
-
-      - name: Upload artifact for deployment job
-        uses: actions/upload-artifact@v4
-        with:
-          name: .net-app
-          path: ${{env.DOTNET_ROOT}}/myapp
 
       - name: Get runner public IP
         id: runner_ip
         run: echo "ipv4=$(curl -s https://api.ipify.org)" >> $GITHUB_OUTPUT
 
       - name: Allow runner IP in Azure SQL firewall
-        run: az sql server firewall-rule create --resource-group blog --server blog2812server --name github-runner --start-ip-address ${{ steps.runner_ip.outputs.ipv4 }} --end-ip-address ${{ steps.runner_ip.outputs.ipv4 }}
+        run: |
+          az sql server firewall-rule create \
+            --resource-group blog \
+            --server blog2812server \
+            --name github-runner \
+            --start-ip-address ${{ steps.runner_ip.outputs.ipv4 }} \
+            --end-ip-address ${{ steps.runner_ip.outputs.ipv4 }}
+
+      - name: List firewall rules
+        run: |
+          az sql server firewall-rule list \
+            --resource-group blog \
+            --server blog2812server \
+            --output table
 
       - name: Update database
-        env: 
+        env:
           ConnectionStrings__DefaultConnection: ${{ secrets.AZURE_SQL_CONNECTION_STRING }}
         run: dotnet ef database update --configuration Release
 
       - name: Remove runner IP from Azure SQL firewall
         if: always()
-        run: az sql server firewall-rule delete --resource-group blog --server blog2812server --name github-runner
+        run: |
+          az sql server firewall-rule delete \
+            --resource-group blog \
+            --server blog2812server \
+            --name github-runner
+
+      - name: dotnet publish
+        run: dotnet publish -c Release -o ${{env.DOTNET_ROOT}}/myapp
+
+
 
   deploy:
     runs-on: ubuntu-latest
